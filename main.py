@@ -44,3 +44,15 @@ df['title'] = title
 df['author'] = author
 df['total comments'] = comments
 df['date'] = date
+
+print(df)
+# ---------- App Layout -----------
+
+# app.layout = html.Div([
+#     html.H1("Reddit Application with Dash", style={'text-align': 'center'}),
+
+#     dcc.Dropdown(id='slct_year', options=[{}]),
+#     html.Div(id='output_container', children=[]),
+#     html.Br(),
+#     dcc.Graph(id='my_timeline', figure={})
+# ])
