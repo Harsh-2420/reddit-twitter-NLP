@@ -22,72 +22,133 @@ def index():
         twitter_consumer_key, twitter_consumer_secret, twitter_callback_uri)
     auth.set_access_token(twitter_access_token, twitter_access_token_secret)
     api = tweepy.API(auth)
-    df = get_df(api)
-    df = df.to_dict()
-    session['df'] = df
+
+    # Data Extraction
+    top_tweets_df = get_tweets_df(api)
+    top_tweets_df = top_tweets_df.to_dict()
+    session['top_tweets_df'] = top_tweets_df
+
+    trends = get_trending_tweet_location(api)
+    trends = trends.to_dict()
+    session['trends'] = trends
+
     return render_template('index.html')
 
 
 @app.route('/chart1')
 def chart1():
-    df = session.get('df', None)
-    df = pd.DataFrame(df)
+    top_tweets_df = session.get('top_tweets_df', None)
+    top_tweets_df = pd.DataFrame(top_tweets_df)
+    d = dict(tuple(top_tweets_df.groupby('result_type')))
     fig = go.Figure()
     fig.add_trace(go.Table(
-        header=dict(values=list(df.columns),
+        header=dict(values=['location', 'name', 'text'],
                     fill_color='paleturquoise',
                     align='left'),
-        cells=dict(values=[df.name, df.location, df.text],
+        cells=dict(values=[d['popular'].name, d['popular'].location, d['popular'].text],
                    fill_color='lavender',
                    align='left'))
                   )
+    fig.add_trace(go.Table(
+        header=dict(values=['location', 'name', 'text'],
+                    fill_color='paleturquoise',
+                    align='left'),
+        cells=dict(values=[d['recent'].name, d['recent'].location, d['recent'].text],
+                   fill_color='lavender',
+                   align='left'))
+                  )
+    fig.update_layout(width=700, height=600)
+    fig.update_layout(
+        updatemenus=[go.layout.Updatemenu(
+            active=0,
+            buttons=list(
+                [dict(label='popular',
+                      method='update',
+                      args=[{'visible': [True, False]},
+                            ]),
+                 dict(label='recent',
+                      method='update',
+                      args=[{'visible': [False, True]},
+                            ]),
+                 ])
+        )
+        ]
+    )
 
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-    header = "Fruit in North America"
+    header = "Get top tweets based on a keyword"
     description = """
-    A academic study of the number of apples, oranges and bananas in the cities of
-    San Francisco and Montreal would probably not come up with this chart.
+    Use a given keyword to get most popular tweets. Give option for recent and custom keyword
     """
     return render_template('notdash2.html', graphJSON=graphJSON, header=header, description=description)
 
 
 @app.route('/chart2')
 def chart2():
-    df = pd.DataFrame({
-        "Vegetables": ["Lettuce", "Cauliflower", "Carrots", "Lettuce", "Cauliflower", "Carrots"],
-        "Amount": [10, 15, 8, 5, 14, 25],
-        "City": ["London", "London", "London", "Madrid", "Madrid", "Madrid"]
-    })
-
-    fig = px.bar(df, x="Vegetables", y="Amount", color="City", barmode="stack")
+    trends = session.get('trends', None)
+    trends = pd.DataFrame(trends)
+    # fig = px.bar(df, x="Vegetables", y="Amount", color="City", barmode="stack")
+    fig = go.Figure()
+    fig.add_trace(go.Table(
+        header=dict(values=list(trends.columns),
+                    fill_color='paleturquoise',
+                    align='left'),
+        cells=dict(
+            values=[trends.tweet, trends.volume],
+            fill_color='lavender',
+            align='left')))
 
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-    header = "Vegetables in Europe"
-    description = """
-    The rumor that vegetarians are having a hard time in London and Madrid can probably not be
-    explained by this chart.
-    """
+    header = "Trending tweets from location keyword"
+    description = """ Using a location keyword (convert to dropdown) to get trending tweets in last 24 hours """
     return render_template('notdash2.html', graphJSON=graphJSON, header=header, description=description)
 
 
-def get_df(api):
-    tweets = tweepy.Cursor(api.search, q='london',
-                           result_type='popular').items(3)
+def get_tweets_df(api):
+    top_tweets = tweepy.Cursor(api.search, q='london',
+                               result_type='popular').items(3)
+    recent_tweets = tweepy.Cursor(api.search, q='london',
+                                  result_type='recent').items(3)
     keyword_df = pd.DataFrame()
     name = []
     location = []
     text = []
+    result_type = []
 
-    for tweet in tweets:
+    for tweet in top_tweets:
         name.append(tweet.user.name)
         location.append(tweet.user.location)
         text.append(tweet.text)
+        result_type.append('popular')
+
+    for tweet in recent_tweets:
+        name.append(tweet.user.name)
+        location.append(tweet.user.location)
+        text.append(tweet.text)
+        result_type.append('recent')
 
     keyword_df['name'] = name
     keyword_df['location'] = location
     keyword_df['text'] = text
+    keyword_df['result_type'] = result_type
 
     return keyword_df
+
+
+def get_trending_tweet_location(api):
+    WORLD = 1
+    # CANADA = 23424775
+
+    rj_trends = api.trends_place(id=WORLD)
+    trends = []
+    for trend in rj_trends[0]['trends']:
+        if trend['tweet_volume'] is not None and trend['tweet_volume'] > 10000:
+            trends.append((trend['name'], trend['tweet_volume']))
+
+    trends.sort(key=lambda x: -x[1])
+    trends = pd.DataFrame(trends)
+    trends.columns = ['tweet', 'volume']
+    return trends
 
 
 if __name__ == '__main__':
