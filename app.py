@@ -13,6 +13,8 @@ import webbrowser
 app = Flask(__name__)
 app.secret_key = 'super secret key'
 sess = Session()
+WORLD = 1
+CANADA = 23424775
 
 
 @app.route('/')
@@ -87,16 +89,42 @@ def chart1():
 def chart2():
     trends = session.get('trends', None)
     trends = pd.DataFrame(trends)
-    # fig = px.bar(df, x="Vegetables", y="Amount", color="City", barmode="stack")
+    trends = trends.sort_values('volume', ascending=False)
+    d = dict(tuple(trends.groupby('id')))
     fig = go.Figure()
     fig.add_trace(go.Table(
-        header=dict(values=list(trends.columns),
+        header=dict(values=['tweet', 'volume'],
                     fill_color='paleturquoise',
                     align='left'),
         cells=dict(
-            values=[trends.tweet, trends.volume],
+            values=[d['world'].tweet, d['world'].volume],
             fill_color='lavender',
             align='left')))
+    fig.add_trace(go.Table(
+        header=dict(values=['tweet', 'volume'],
+                    fill_color='paleturquoise',
+                    align='left'),
+        cells=dict(
+            values=[d['canada'].tweet, d['canada'].volume],
+            fill_color='lavender',
+            align='left')))
+    fig.update_layout(width=700, height=600)
+    fig.update_layout(
+        updatemenus=[go.layout.Updatemenu(
+            active=0,
+            buttons=list(
+                [dict(label='world',
+                      method='update',
+                      args=[{'visible': [True, False]},
+                            ]),
+                 dict(label='canada',
+                      method='update',
+                      args=[{'visible': [False, True]},
+                            ]),
+                 ])
+        )
+        ]
+    )
 
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
     header = "Trending tweets from location keyword"
@@ -136,18 +164,26 @@ def get_tweets_df(api):
 
 
 def get_trending_tweet_location(api):
-    WORLD = 1
-    # CANADA = 23424775
 
-    rj_trends = api.trends_place(id=WORLD)
+    wrld_trends = api.trends_place(id=WORLD)
+    canada_trends = api.trends_place(id=CANADA)
     trends = []
-    for trend in rj_trends[0]['trends']:
+    # i = []
+    for trend in wrld_trends[0]['trends']:
+        # i.append(WORLD)
         if trend['tweet_volume'] is not None and trend['tweet_volume'] > 10000:
-            trends.append((trend['name'], trend['tweet_volume']))
+            trends.append((trend['name'], trend['tweet_volume'], 'world'))
 
-    trends.sort(key=lambda x: -x[1])
+    for trend in canada_trends[0]['trends']:
+        # i.append(WORLD)
+        if trend['tweet_volume'] is not None and trend['tweet_volume'] > 10000:
+            trends.append((trend['name'], trend['tweet_volume'], 'canada'))
+
+    # trends.sort(key=lambda x: -x[1])
     trends = pd.DataFrame(trends)
-    trends.columns = ['tweet', 'volume']
+    # trends["id"] = i
+
+    trends.columns = ['tweet', 'volume', 'id']
     return trends
 
 
